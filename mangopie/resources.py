@@ -1,10 +1,11 @@
 from tastypie.resources import Resource, DeclarativeMetaclass
 from tastypie import fields as tasty_fields
 from tastypie.bundle import Bundle
-from tastypie.exceptions import TastypieError
+from tastypie.exceptions import TastypieError, NotFound
 
 from mongoengine import EmbeddedDocument
 from mongoengine import fields as mongo_fields
+
 from mangopie import fields
 
 FIELD_MAP = {
@@ -62,7 +63,7 @@ class DocumentDeclarativeMetaclass(DeclarativeMetaclass):
 
         if getattr(new_class._meta, 'include_absolute_url', True):
             if not 'absolute_url' in new_class.base_fields:
-                new_class.base_fields['absolute_url'] = CharField(attribute='get_absolute_url', readonly=True)
+                new_class.base_fields['absolute_url'] = tasty_fields.CharField(attribute='get_absolute_url', readonly=True)
         elif 'absolute_url' in new_class.base_fields and not 'absolute_url' in attrs:
             del(new_class.base_fields['absolute_url'])
 
@@ -232,13 +233,54 @@ class DocumentResource(Resource):
         kwargs = {
           'resource_name': self._meta.resource_name,
         }
-
+        
         if isinstance(bundle_or_obj, Bundle):
             kwargs['pk'] = bundle_or_obj.obj.pk
         else:
-            kwargs['pk'] = bundle_or_obj.id
+            kwargs['pk'] = bundle_or_obj.pk
 
         if self._meta.api_name is not None:
             kwargs['api_name'] = self._meta.api_name
 
         return self._build_reverse_url("api_dispatch_detail", kwargs=kwargs)
+    
+    def full_hydrate(self, bundle):
+        """
+        Given a populated bundle, distill it and turn it back into
+        a full-fledged object instance.
+        """
+        if bundle.obj is None:
+            bundle.obj = self._meta.object_class()
+
+        for field_name, field_object in self.fields.items():
+            if field_object.attribute:
+                value = field_object.hydrate(bundle)
+                
+                if value is not None or field_object.null:
+                    # We need to avoid populating M2M data here as that will
+                    # cause things to blow up.
+                    if not getattr(field_object, 'is_related', False):
+                        setattr(bundle.obj, field_object.attribute, value)
+                    elif not getattr(field_object, 'is_m2m', False):
+                        if value is not None:
+                            setattr(bundle.obj, field_object.attribute, value.obj)
+
+            # Check for an optional method to do further hydration.
+            method = getattr(self, "hydrate_%s" % field_name, None)
+
+            if method:
+                bundle = method(bundle)
+
+        bundle = self.hydrate(bundle)
+        return bundle
+    
+    def obj_create(self, bundle, request=None, **kwargs):
+        bundle.obj = self._meta.object_class()
+        
+        for key, value in kwargs.items():
+            setattr(bundle.obj, key, value)
+            
+        bundle = self.full_hydrate(bundle)
+        bundle.obj.save()
+        
+        return bundle
