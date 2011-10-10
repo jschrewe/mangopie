@@ -18,17 +18,21 @@ class ListField(ApiField):
         inner_field.attribute = 'value'
         self.inner_field = inner_field
 
-    def convert(self, bundle):
-        items = getattr(bundle.obj, self.attribute)
-        return [self.inner_field.dehydrate(Bundle(obj = ListFieldValue(item))) for item in items]
+    def convert(self, items):
+        #print type(bundle)
+        #items = getattr(bundle.obj, self.attribute)
+        return [self.inner_field.dehydrate(Bundle(obj=ListFieldValue(item))) for item in items]
     
     def hydrate(self, bundle):
         field = bundle.obj._fields[self.attribute]
         # ReferenceFields need a little more massage...
         if isinstance(field.field, ReferenceField):
-            items = bundle.data[self.attribute]
-            klass = field.field.document_type
-            return [klass.objects().get(pk=item) for item in items]
+            try:
+                items = bundle.data[self.attribute]
+                klass = field.field.document_type
+                return [klass.objects().get(pk=item) for item in items]
+            except KeyError:
+                pass
         
         return super(ListField, self).hydrate(bundle)
         

@@ -5,6 +5,7 @@ from tastypie.exceptions import TastypieError, NotFound
 
 from mongoengine import EmbeddedDocument
 from mongoengine import fields as mongo_fields
+from mongoengine.queryset import DoesNotExist
 
 from mangopie import fields
 
@@ -219,7 +220,7 @@ class DocumentResource(Resource):
         """
         try:
             obj = self.get_object_list(request).get(**kwargs)
-        except ObjectDoesNotExist:
+        except DoesNotExist:
             raise NotFound("A model instance matching the provided arguments could not be found.")
 
         obj.delete()
@@ -243,36 +244,37 @@ class DocumentResource(Resource):
             kwargs['api_name'] = self._meta.api_name
 
         return self._build_reverse_url("api_dispatch_detail", kwargs=kwargs)
-    
-    def full_hydrate(self, bundle):
-        """
-        Given a populated bundle, distill it and turn it back into
-        a full-fledged object instance.
-        """
-        if bundle.obj is None:
-            bundle.obj = self._meta.object_class()
 
-        for field_name, field_object in self.fields.items():
-            if field_object.attribute:
-                value = field_object.hydrate(bundle)
-                
-                if value is not None or field_object.null:
-                    # We need to avoid populating M2M data here as that will
-                    # cause things to blow up.
-                    if not getattr(field_object, 'is_related', False):
-                        setattr(bundle.obj, field_object.attribute, value)
-                    elif not getattr(field_object, 'is_m2m', False):
-                        if value is not None:
-                            setattr(bundle.obj, field_object.attribute, value.obj)
-
-            # Check for an optional method to do further hydration.
-            method = getattr(self, "hydrate_%s" % field_name, None)
-
-            if method:
-                bundle = method(bundle)
-
-        bundle = self.hydrate(bundle)
-        return bundle
+# Is there a reason why that was here and not in the super class?    
+#    def full_hydrate(self, bundle):
+#        """
+#        Given a populated bundle, distill it and turn it back into
+#        a full-fledged object instance.
+#        """
+#        if bundle.obj is None:
+#            bundle.obj = self._meta.object_class()
+#
+#        for field_name, field_object in self.fields.items():
+#            if field_object.attribute:
+#                value = field_object.hydrate(bundle)
+#                
+#                if value is not None or field_object.null:
+#                    # We need to avoid populating M2M data here as that will
+#                    # cause things to blow up.
+#                    if not getattr(field_object, 'is_related', False):
+#                        setattr(bundle.obj, field_object.attribute, value)
+#                    elif not getattr(field_object, 'is_m2m', False):
+#                        if value is not None:
+#                            setattr(bundle.obj, field_object.attribute, value.obj)
+#
+#            # Check for an optional method to do further hydration.
+#            method = getattr(self, "hydrate_%s" % field_name, None)
+#
+#            if method:
+#                bundle = method(bundle)
+#
+#        bundle = self.hydrate(bundle)
+#        return bundle
     
     def obj_create(self, bundle, request=None, **kwargs):
         bundle.obj = self._meta.object_class()
@@ -284,3 +286,33 @@ class DocumentResource(Resource):
         bundle.obj.save()
         
         return bundle
+    
+    def obj_update(self, bundle, request=None, **kwargs):
+        if not bundle.obj or not bundle.obj.pk:
+            # Attempt to hydrate data from kwargs before doing a lookup for the object.
+            # This step is needed so certain values (like datetime) will pass model validation.
+            try:  
+                bundle.obj = self.get_object_list(request)._document()
+                bundle.data.update(kwargs)
+                bundle = self.full_hydrate(bundle)
+                lookup_kwargs = kwargs.copy()
+                lookup_kwargs.update(dict(
+                    (k, getattr(bundle.obj, k))
+                    for k in kwargs.keys()
+                    if getattr(bundle.obj, k) is not None))
+            except:
+                # if there is trouble hydrating the data, fall back to just
+                # using kwargs by itself (usually it only contains a "pk" key
+                # and this will work fine.
+                lookup_kwargs = kwargs
+            try:  
+                bundle.obj = self.obj_get(request, **lookup_kwargs)
+            except DoesNotExist:
+                raise NotFound("A model instance matching the provided arguments could not be found.")
+
+        bundle = self.full_hydrate(bundle)
+        bundle.obj.save()
+
+        return bundle
+        
+        
