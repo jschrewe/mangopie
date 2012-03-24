@@ -26,6 +26,7 @@ class ListField(ApiField):
     def hydrate(self, bundle):
         field = bundle.obj._fields[self.attribute]
         # ReferenceFields need a little more massage...
+        # TODO: This is the crap way to do it.
         if isinstance(field.field, ReferenceField):
             try:
                 items = bundle.data[self.attribute]
