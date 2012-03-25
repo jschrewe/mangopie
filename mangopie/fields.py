@@ -1,10 +1,6 @@
-from django.utils.encoding import smart_unicode
-
-from pymongo.objectid import ObjectId
 from mongoengine import ReferenceField
 
 from tastypie.bundle import Bundle
-from tastypie.resources import Resource
 from tastypie.fields import ApiField
 
 class ListFieldValue(object):
@@ -19,8 +15,6 @@ class ListField(ApiField):
         self.inner_field = inner_field
 
     def convert(self, items):
-        #print type(bundle)
-        #items = getattr(bundle.obj, self.attribute)
         return [self.inner_field.dehydrate(Bundle(obj=ListFieldValue(item))) for item in items]
     
     def hydrate(self, bundle):
@@ -49,21 +43,6 @@ class EmbeddedResourceField(ApiField):
     def dehydrate(self, bundle):
         doc = getattr(bundle.obj, self.attribute)
         return self.resource_type().full_dehydrate(doc)
-    
-#class ReferenceField(ApiField):
-#    dehydrated_type = 'string'
-#    help_text = 'Unicode string document id. Example: "4e8b67e357a0205319000000"'
-#
-#    def convert(self, value):
-#        if value is None:
-#            return None
-#        
-#        return smart_unicode(value.__str__()) 
-#    
-#    def hydrate(self, bundle):
-#        value = super(ReferenceField, self).hydrate(bundle)
-#        if isinstance(value, basestring):
-#            return ObjectId(value)
-#        return value
+
         
         

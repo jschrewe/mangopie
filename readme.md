@@ -9,15 +9,19 @@ Tastypie resources for mongoengine documents.
 
 ## Status
 
-mangopie has been (for quiete some time) in the early development stages. A lot of the things
+mangopie has been (for quite some time) in the early development stages. A lot of the things
 tastypie supports are not supported by mangopie. Features like throttling, pagination, 
 authentication/authorization *should* work, but are mostly untested. The reason is that at the moment I use mangopie for simple internal APIs but have neither need nor means to test 
 more complex features.
 
 ### What doesn't work?
 
-  * Deletion of objects
-  * Filtering
+mangopie is currently based on an old version of tastypie. Newer additions to 
+tastypie (e.g. HTTP methods other than GET/PUT/POST/DELETE) might not work. If
+you find something that's broken, please file an issue.
+
+  * Filter generation
+  * Sorting
   * Complex mongoengine fields like DictFields (ListFields work however)
 
 ## Usage

@@ -6,6 +6,9 @@ class DjangoAuthorization(Authorization):
     """
     Uses permission checking from ``django.contrib.auth`` to map ``POST``,
     ``PUT``, and ``DELETE`` to their equivalent django auth permissions.
+    
+    This version of DjangoAuthorization works with mongoengine documents
+    and django models.
     """
     def _app_and_module_for_klass(self, klass):
         module_name = klass.__name__.lower()
@@ -34,9 +37,15 @@ class DjangoAuthorization(Authorization):
 
         # cannot map request method to permission code name
         if request.method not in permission_codes:
-            return True
-
-        permission_code = permission_codes[request.method] % self._app_and_module_for_klass(klass)
+            return False
+        
+        try:
+            permission_code = permission_codes[request.method] % (klass._meta.app_label, klass._meta.module_name)
+        except AttributeError:
+            # if klass._meta is missing app_label and module_name
+            # this is most likely a mongoengine document. Figure it
+            # out manually then.
+            permission_code = permission_codes[request.method] % self._app_and_module_for_klass(klass)
 
         # user must be logged in to check permissions
         # authentication backend must set request.user
