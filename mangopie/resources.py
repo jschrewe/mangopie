@@ -188,7 +188,6 @@ class DocumentResource(Resource):
             filters = request.GET
 
         applicable_filters = self.build_filters(filters=filters)
-        print applicable_filters
 
         try:
             return self.get_object_list(request).filter(**applicable_filters)
