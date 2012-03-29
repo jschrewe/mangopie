@@ -168,9 +168,12 @@ class DocumentResource(Resource):
 
         return authed_object_list
 
-    # TODO support filters
-    def build_filters(self, filters = None):
-        return { }
+    def build_filters(self, filters=None):
+        """ Turn the Django QueryDict into a dictionary that could be used in a MongoEngine filter() call. """
+        mongoengine_filters = dict()
+        for key, value in filters.iteritems():
+            mongoengine_filters[key] = value
+        return mongoengine_filters
 
     def obj_get_list(self, request=None, **kwargs):
         """
@@ -185,6 +188,7 @@ class DocumentResource(Resource):
             filters = request.GET
 
         applicable_filters = self.build_filters(filters=filters)
+        print applicable_filters
 
         try:
             return self.get_object_list(request).filter(**applicable_filters)
