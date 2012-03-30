@@ -209,7 +209,7 @@ class DocumentResource(Resource):
             if len(filter_bits) and filter_bits[-1] in QUERY_TERMS:
                 filter_type = filter_bits.pop()
 
-            lookup_bits = [field_name] # self.check_filtering(field_name, filter_type, filter_bits)
+            lookup_bits = [field_name]
 
             # Split on ',' if not empty string and either an in or range filter.
             if filter_type in ('in', 'range') and len(value):
