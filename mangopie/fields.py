@@ -21,24 +21,6 @@ class ListField(ApiField):
 
     def convert(self, items):
         return [self.inner_field.dehydrate(Bundle(obj=ListFieldValue(item))) for item in items]
-    
-    def hydrate(self, bundle):
-        field = bundle.obj._fields[self.attribute]
-        # ReferenceFields need a little more massage...
-        # TODO: This is the crap way to do it.
-        if isinstance(field.field, ReferenceField):
-            try:
-                items = bundle.data[self.attribute]
-                klass = field.field.document_type
-                return [klass.objects().get(pk=item) for item in items]
-            except KeyError:
-                pass
-        
-        return super(ListField, self).hydrate(bundle)
-        
-
-class DictField(ApiField):
-    pass
 
 class ReferenceList(RelatedField):
     is_m2m = True
@@ -64,6 +46,15 @@ class ReferenceList(RelatedField):
     def hydrate_m2m(self, bundle):
         if self.readonly:
             return None
+        
+        # if field data is not provided in the bundle and the object
+        # has data, we are most likely dealing with an update.
+        # In that case set the data on the bundle and proceed like
+        # it was provided. This is rather inefficient but keeps 
+        # complexity limited. 
+        if bundle.data.get(self.instance_name) is None and \
+                getattr(bundle.obj, self.attribute) != []:
+            bundle.data[self.instance_name] = self.dehydrate(bundle)
         
         if bundle.data.get(self.instance_name) is None:
             if self.blank:

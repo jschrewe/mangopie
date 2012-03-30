@@ -14,7 +14,7 @@ FIELD_MAP = {
 	mongo_fields.DateTimeField: tasty_fields.DateTimeField,
 	mongo_fields.IntField: tasty_fields.IntegerField,
 	mongo_fields.FloatField: tasty_fields.FloatField,
-	mongo_fields.DictField: fields.DictField,
+	mongo_fields.DictField: tasty_fields.DictField,
 # Char Fields:
 #  StringField, ObjectIdField, EmailField, URLField
 # TODO
@@ -270,16 +270,21 @@ class DocumentResource(Resource):
         for key, value in kwargs.items():
             setattr(bundle.obj, key, value)    
         bundle = self.full_hydrate(bundle)
-        self.is_valid(bundle, request)
         
-        if bundle.errors:
-            self.error_response(bundle.errors, request)
+        # This is supported by current development version of 
+        # tastypie. Run it only if tastypie already supports error
+        # handling on the bundle.
+        if hasattr(bundle, 'errors'):
+            self.is_valid(bundle, request)
+        
+            if bundle.errors:
+                self.error_response(bundle.errors, request)
         
         # Listfields that contain ReferenceFields are treated as an m2m relationship
         # Run hydrate_m2m here and assign the returned values to the Listfield before
         # the object is saved.
         m2m_bundle = self.hydrate_m2m(bundle)
-        self.save_m2m(self, m2m_bundle)
+        self.save_m2m(m2m_bundle)
         
         bundle.obj.save()
         return bundle
@@ -308,16 +313,21 @@ class DocumentResource(Resource):
                 raise NotFound("A model instance matching the provided arguments could not be found.")
 
         bundle = self.full_hydrate(bundle)
-        self.is_valid(bundle, request)
         
-        if bundle.errors:
-            self.error_response(bundle.errors, request)
+        # This is supported by current development version of 
+        # tastypie. Run it only if tastypie already supports error
+        # handling on the bundle.
+        if hasattr(bundle, 'errors'):
+            self.is_valid(bundle, request)
+        
+            if bundle.errors:
+                self.error_response(bundle.errors, request)
         
         # Listfields that contain ReferenceFields are treated as an m2m relationship
         # Run hydrate_m2m here and assign the returned values to the Listfield before
         # the object is saved.
         m2m_bundle = self.hydrate_m2m(bundle)
-        self.save_m2m(self, m2m_bundle)
+        self.save_m2m(m2m_bundle)
         
         bundle.obj.save()
         return bundle
