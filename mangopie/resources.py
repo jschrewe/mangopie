@@ -1,7 +1,8 @@
-from tastypie.resources import Resource, DeclarativeMetaclass
 from tastypie import fields as tasty_fields
 from tastypie.bundle import Bundle
 from tastypie.exceptions import TastypieError, NotFound
+from tastypie.resources import Resource, DeclarativeMetaclass
+from tastypie.utils import dict_strip_unicode_keys
 
 from mongoengine import EmbeddedDocument
 from mongoengine import fields as mongo_fields
@@ -10,11 +11,11 @@ from mongoengine.queryset import DoesNotExist
 from mangopie import fields
 
 FIELD_MAP = {
-	mongo_fields.BooleanField: tasty_fields.BooleanField,
-	mongo_fields.DateTimeField: tasty_fields.DateTimeField,
-	mongo_fields.IntField: tasty_fields.IntegerField,
-	mongo_fields.FloatField: tasty_fields.FloatField,
-	mongo_fields.DictField: fields.DictField,
+    mongo_fields.BooleanField: tasty_fields.BooleanField,
+    mongo_fields.DateTimeField: tasty_fields.DateTimeField,
+    mongo_fields.IntField: tasty_fields.IntegerField,
+    mongo_fields.FloatField: tasty_fields.FloatField,
+    mongo_fields.DictField: fields.DictField,
 # Char Fields:
 #  StringField, ObjectIdField, EmailField, URLField
 # TODO
@@ -169,11 +170,60 @@ class DocumentResource(Resource):
         return authed_object_list
 
     def build_filters(self, filters=None):
-        """ Turn the Django QueryDict into a dictionary that could be used in a MongoEngine filter() call. """
-        mongoengine_filters = dict()
-        for key, value in filters.iteritems():
-            mongoengine_filters[key] = value
-        return mongoengine_filters
+        """ Given a dictionary of filters, create the necessary ORM-level filters.
+
+            Keys should be resource fields, **NOT** model fields.
+
+            Valid values are either a list of Django filter types (i.e.
+            ``['startswith', 'exact', 'lte']``), the ``ALL`` constant or the
+            ``ALL_WITH_RELATIONS`` constant. """
+        # At the declarative level:
+        #     filtering = {
+        #         'resource_field_name': ['exact', 'startswith', 'endswith', 'contains'],
+        #         'resource_field_name_2': ['exact', 'gt', 'gte', 'lt', 'lte', 'range'],
+        #         'resource_field_name_3': ALL,
+        #         'resource_field_name_4': ALL_WITH_RELATIONS,
+        #         ...
+        #     }
+        # Accepts the filters as a dict. None by default, meaning no filters.
+        if filters is None:
+            filters = {}
+
+        qs_filters = {}
+
+        LOOKUP_SEP = '__'
+        QUERY_TERMS = ['ne', 'gt', 'gte', 'lt', 'lte', 'in', 'nin', 'mod', 'all', 'size', 'exists', 'not',
+            'within_distance', 'within_spherical_distance', 'within_box', 'within_polygon', 'near',
+            'near_sphere', 'contains', 'icontains', 'startswith', 'istartswith', 'endswith', 'iendswith',
+            'exact', 'iexact', 'match']
+
+        for filter_expr, value in filters.items():
+            filter_bits = filter_expr.split(LOOKUP_SEP)
+            field_name = filter_bits.pop(0)
+            filter_type = 'exact'
+
+            if not field_name in self.fields:
+                # It's not a field we know about. Move along citizen.
+                continue
+
+            if len(filter_bits) and filter_bits[-1] in QUERY_TERMS:
+                filter_type = filter_bits.pop()
+
+            lookup_bits = [field_name] # self.check_filtering(field_name, filter_type, filter_bits)
+
+            # Split on ',' if not empty string and either an in or range filter.
+            if filter_type in ('in', 'range') and len(value):
+                if hasattr(filters, 'getlist'):
+                    value = filters.getlist(filter_expr)
+                else:
+                    value = value.split(',')
+
+            db_field_name = LOOKUP_SEP.join(lookup_bits)
+            qs_filter = "%s%s%s" % (db_field_name, LOOKUP_SEP, filter_type)
+            qs_filters[qs_filter] = value
+
+        return dict_strip_unicode_keys(qs_filters)
+
 
     def obj_get_list(self, request=None, **kwargs):
         """
