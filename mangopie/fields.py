@@ -7,6 +7,7 @@ class ListFieldValue(object):
     def __init__(self, value):
         self.value = value
 
+
 class ListField(ApiField):
     def __init__(self, inner_field, **kwargs):
         super(ListField, self).__init__(**kwargs)
@@ -16,7 +17,7 @@ class ListField(ApiField):
 
     def convert(self, items):
         return [self.inner_field.dehydrate(Bundle(obj=ListFieldValue(item))) for item in items]
-    
+
     def hydrate(self, bundle):
         field = bundle.obj._fields[self.attribute]
         # ReferenceFields need a little more massage...
@@ -28,12 +29,13 @@ class ListField(ApiField):
                 return [klass.objects().get(pk=item) for item in items]
             except KeyError:
                 pass
-        
+
         return super(ListField, self).hydrate(bundle)
-        
+
 
 class DictField(ApiField):
     pass
+
 
 class EmbeddedResourceField(ApiField):
     def __init__(self, resource_type, **kwargs):
@@ -43,6 +45,3 @@ class EmbeddedResourceField(ApiField):
     def dehydrate(self, bundle):
         doc = getattr(bundle.obj, self.attribute)
         return self.resource_type().full_dehydrate(doc)
-
-        
-        
