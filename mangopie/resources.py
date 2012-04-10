@@ -15,7 +15,6 @@ FIELD_MAP = {
     mongo_fields.DateTimeField: tasty_fields.DateTimeField,
     mongo_fields.IntField: tasty_fields.IntegerField,
     mongo_fields.FloatField: tasty_fields.FloatField,
-    mongo_fields.DictField: fields.DictField,
     mongo_fields.ListField: fields.ListField,
 # Char Fields:
 #  StringField, ObjectIdField, EmailField, URLField
