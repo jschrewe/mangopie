@@ -148,7 +148,7 @@ class DocumentResource(Resource):
             # If field is in exclude list, skip
             if excludes and name in excludes:
                 continue
-            
+
             # skip relationship fields
             if cls.should_skip_field(f):
                 continue
@@ -240,6 +240,11 @@ class DocumentResource(Resource):
                         value = filters.getlist(filter_expr)
                 else:
                     value = value.split(',')
+
+            # Mongoengine requires us to search for sizes with numbers, but we will have strings so we need to
+            # convert
+            if filter_type == 'size':
+                value = int(value)
 
             db_field_name = LOOKUP_SEP.join(lookup_bits)
             qs_filter = "%s%s%s" % (db_field_name, LOOKUP_SEP, filter_type)
