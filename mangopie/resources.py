@@ -79,7 +79,7 @@ class DocumentResource(Resource):
     This class will introspect a given ``Document`` and build a field list based
     on the fields found on the model (excluding relational fields).
 
-    Given that it is aware of Django's ORM, it also handles the CRUD data
+    Given that it is aware of mongoengine's ODM, it also handles the CRUD data
     operations of the resource.
     """
     __metaclass__ = DocumentDeclarativeMetaclass
@@ -110,6 +110,19 @@ class DocumentResource(Resource):
                 f = f.__class__
 
         return default, { }
+    
+    @classmethod
+    def should_skip_field(cls, field):
+        """
+        Given a mongoengine document field, return if it should be included in the
+        contributed ApiFields.
+        """
+        if isinstance(field, mongo_fields.ReferenceField):
+            return True
+        if isinstance(field, mongo_fields.ListField) and isinstance(field.field, mongo_fields.ReferenceField):
+            return True
+        
+        return False
 
     @classmethod
     def get_fields(cls, fields=None, excludes=None):
@@ -135,6 +148,10 @@ class DocumentResource(Resource):
 
             # If field is in exclude list, skip
             if excludes and name in excludes:
+                continue
+            
+            # skip relationship fields
+            if cls.should_skip_field(f):
                 continue
 
             api_field_class, kwargs = cls.api_field_from_mongoengine_field(f)
@@ -295,10 +312,12 @@ class DocumentResource(Resource):
           'resource_name': self._meta.resource_name,
         }
         
+        # make sure pk is a str, because mongoengine loves
+        # to pass ObjectIds around.
         if isinstance(bundle_or_obj, Bundle):
-            kwargs['pk'] = bundle_or_obj.obj.pk
+            kwargs['pk'] = str(bundle_or_obj.obj.pk)
         else:
-            kwargs['pk'] = bundle_or_obj.pk
+            kwargs['pk'] = str(bundle_or_obj.pk)
 
         if self._meta.api_name is not None:
             kwargs['api_name'] = self._meta.api_name
@@ -309,11 +328,25 @@ class DocumentResource(Resource):
         bundle.obj = self._meta.object_class()
         
         for key, value in kwargs.items():
-            setattr(bundle.obj, key, value)
-            
+            setattr(bundle.obj, key, value)    
         bundle = self.full_hydrate(bundle)
-        bundle.obj.save()
         
+        # This is supported by current development version of 
+        # tastypie. Run it only if tastypie already supports error
+        # handling on the bundle.
+        if hasattr(bundle, 'errors'):
+            self.is_valid(bundle, request)
+        
+            if bundle.errors:
+                self.error_response(bundle.errors, request)
+        
+        # Listfields that contain ReferenceFields are treated as an m2m relationship
+        # Run hydrate_m2m here and assign the returned values to the Listfield before
+        # the object is saved.
+        m2m_bundle = self.hydrate_m2m(bundle)
+        self.save_m2m(m2m_bundle)
+        
+        bundle.obj.save()
         return bundle
     
     def obj_update(self, bundle, request=None, **kwargs):
@@ -340,8 +373,60 @@ class DocumentResource(Resource):
                 raise NotFound("A model instance matching the provided arguments could not be found.")
 
         bundle = self.full_hydrate(bundle)
+        
+        # This is supported by current development version of 
+        # tastypie. Run it only if tastypie already supports error
+        # handling on the bundle.
+        if hasattr(bundle, 'errors'):
+            self.is_valid(bundle, request)
+        
+            if bundle.errors:
+                self.error_response(bundle.errors, request)
+        
+        # Listfields that contain ReferenceFields are treated as an m2m relationship
+        # Run hydrate_m2m here and assign the returned values to the Listfield before
+        # the object is saved.
+        m2m_bundle = self.hydrate_m2m(bundle)
+        self.save_m2m(m2m_bundle)
+        
         bundle.obj.save()
-
         return bundle
+    
+    def save_m2m(self, bundle):
+        """
+        Handles assignment of m2m data on the object.
+        
+        Supported m2m data is at the moment only ListFields containing ReferenceFields.
+        
+        Does not run save on bundle.obj. This differs from the tastypie behavior.
+        """
+        
+        for field_name, field_object in self.fields.items():
+            if not getattr(field_object, 'is_m2m', False):
+                continue
+
+            if not field_object.attribute:
+                continue
+
+            if field_object.readonly:
+                continue
+            
+            related_objs = []
+            
+            for related_bundle in bundle.data[field_name]:
+                related_bundle.obj.save()
+                related_objs.append(related_bundle.obj)
+                
+            setattr(bundle.obj, field_object.attribute, related_objs)
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
         
         
