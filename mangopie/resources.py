@@ -11,11 +11,11 @@ from mongoengine.queryset import DoesNotExist
 from mangopie import fields
 
 FIELD_MAP = {
-	mongo_fields.BooleanField: tasty_fields.BooleanField,
-	mongo_fields.DateTimeField: tasty_fields.DateTimeField,
-	mongo_fields.IntField: tasty_fields.IntegerField,
-	mongo_fields.FloatField: tasty_fields.FloatField,
-	mongo_fields.DictField: tasty_fields.DictField,
+    mongo_fields.BooleanField: tasty_fields.BooleanField,
+    mongo_fields.DateTimeField: tasty_fields.DateTimeField,
+    mongo_fields.IntField: tasty_fields.IntegerField,
+    mongo_fields.FloatField: tasty_fields.FloatField,
+    mongo_fields.ListField: fields.ListField,
 # Char Fields:
 #  StringField, ObjectIdField, EmailField, URLField
 # TODO
@@ -148,7 +148,7 @@ class DocumentResource(Resource):
             # If field is in exclude list, skip
             if excludes and name in excludes:
                 continue
-            
+
             # skip relationship fields
             if cls.should_skip_field(f):
                 continue
@@ -223,17 +223,28 @@ class DocumentResource(Resource):
                 # It's not a field we know about. Move along citizen.
                 continue
 
-            if len(filter_bits) and filter_bits[-1] in QUERY_TERMS:
+            # Allow the use of positional searching on ListFields
+            if (len(filter_bits) and filter_bits[-1] in QUERY_TERMS) or \
+                    (len(filter_bits) and filter_bits[-1].isdigit() and \
+                        isinstance(getattr(self._meta.object_class, field_name), mongo_fields.ListField)):
                 filter_type = filter_bits.pop()
 
             lookup_bits = [field_name]
 
-            # Split on ',' if not empty string and either an in or range filter.
-            if filter_type in ('in', 'range') and len(value):
+            # Split on ',' if not empty string and either an in or range filter. We also want to get the list
+            # version of the value if the field in question is a ListField.
+            if (filter_type in ('in', 'range') and len(value)) or \
+                    isinstance(getattr(self._meta.object_class, field_name), mongo_fields.ListField):
                 if hasattr(filters, 'getlist'):
-                    value = filters.getlist(filter_expr)
+                    if len(filters.getlist(filter_expr)) > 1:
+                        value = filters.getlist(filter_expr)
                 else:
                     value = value.split(',')
+
+            # Mongoengine requires us to search for sizes with numbers, but we will have strings so we need to
+            # convert
+            if filter_type == 'size':
+                value = int(value)
 
             db_field_name = LOOKUP_SEP.join(lookup_bits)
             qs_filter = "%s%s%s" % (db_field_name, LOOKUP_SEP, filter_type)
